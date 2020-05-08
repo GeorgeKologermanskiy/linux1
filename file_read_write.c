@@ -72,16 +72,23 @@ int write_file_ret_iNode(FILE *fd, FSMetaData *data, int iNode, char *buff, int 
             fwrite(&fileInfo, sizeof(Info), 1, fd);
             return iNode;
         }
+
         // read items
         FileLink* items = (FileLink*)malloc(sizeof(FileLink) * MAX_LINK_COUNT);
         fseek(fd, sizeof(FSMetaData) + iNode * CHUNK_SIZE + sizeof(Info), SEEK_SET);
         fread(items, sizeof(FileLink), fileInfo.countData, fd);
 
+        fileInfo.countData = MAX_LINK_COUNT;
         for (int pos = 0; pos < MAX_LINK_COUNT; ++pos)
         {
             if (pos >= fileInfo.countData)
             {
                 items[pos].iNode = NewINode(fd, data, iNode, IT_FILE, fileInfo.depth - 1);
+            }
+            if (0 == len)
+            {
+                fileInfo.countData = pos;
+                break;
             }
             int w = 0;
             write_file_ret_iNode(fd, data, items[pos].iNode, buff, len, &w, 0);
@@ -91,7 +98,6 @@ int write_file_ret_iNode(FILE *fd, FSMetaData *data, int iNode, char *buff, int 
             fileInfo.freeSpace -= w;
         }
         // update file info
-        fileInfo.countData = MAX_LINK_COUNT;
         fseek(fd, sizeof(FSMetaData) + iNode * CHUNK_SIZE, SEEK_SET);
         fwrite(&fileInfo, sizeof(Info), 1, fd);
 

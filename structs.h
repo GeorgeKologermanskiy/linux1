@@ -3,8 +3,6 @@
 
 #include <stdio.h>
 
-//const int CHUNK_SIZE = 4096;
-
 typedef enum OpenFileType
 {
     OFT_READ,
@@ -18,11 +16,11 @@ typedef struct FDStruct
     int iNode;
 } FDStruct;
 
-const int MAX_FD = 16;
+#define MAX_FD 16
 
 typedef struct FSMetaData
 {
-    FDStruct fd[16];
+    FDStruct fd[MAX_FD];
     int lastBlockNum;
 } FSMetaData;
 
@@ -45,12 +43,12 @@ typedef struct Info
     int freeSpace;
 } Info;
 
-const int MAX_PATH = 20;
+#define MAX_PATH 20
 
 typedef struct Item
 {
     int iNodeLoc;
-    char name[20];
+    char name[MAX_PATH];
     ItemType type;
 } Item;
 
@@ -59,11 +57,12 @@ typedef struct FileLink
     int iNode;
 } FileLink;
 
-const int CHUNK_SIZE = sizeof(Info) + 2 * sizeof(Item);
+#define CHUNK_SIZE 128
+//sizeof(Info) + 2 * sizeof(Item);
 
-const int MAX_CHUNK_SPACE = CHUNK_SIZE - sizeof(Info);
+#define MAX_CHUNK_SPACE (CHUNK_SIZE - sizeof(Info))
 
-const int MAX_LINK_COUNT = MAX_CHUNK_SPACE / sizeof(FileLink);
+#define MAX_LINK_COUNT  (MAX_CHUNK_SPACE / sizeof(FileLink))
 
 int power(int a, int n)
 {

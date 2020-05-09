@@ -1,27 +1,67 @@
-#include <stdio.h>
-#include <string.h>
+#include <stdio.h> 
+#include <string.h> 
+#include <sys/stat.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <errno.h>
+#include <unistd.h>
 #include <stdlib.h>
+#include <netinet/in.h>
+#include <sys/un.h>
+#include <arpa/inet.h>
+#include <sys/wait.h>
 
-#include "start_stop_fs.c"
-#include "dir.c"
-#include "file.c"
-#include "ls.c"
-#include "rm.c"
-#include "file_open_close.c"
-#include "file_read_write.c"
+#include "../server/config.c"
+#include "../server/structs.h"
+#include "../server/ret_values.h"
 
-int main(int argc, char ** argv)
+int sfd;
+
+void handle_sigint()
 {
-    FSMetaData data;
-    FILE* fd = start_fs(argc, argv, &data);
-    if (NULL == fd)
+    OperationType oType = OT_CLOSE_CONNECTION;
+    write(sfd, &oType, sizeof(OperationType));
+    printf("\n");
+    close(sfd);
+    exit(0);
+}
+
+int main(int argc, char **argv)
+{
+    struct sigaction action_int;
+    memset(&action_int, 0, sizeof(action_int));
+    action_int.sa_handler = handle_sigint;
+    action_int.sa_flags = SA_RESTART;
+    sigaction(SIGINT, &action_int, NULL);
+
+    struct sockaddr_in server_addr;
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(PORT_CON);
+
+    if (inet_pton(AF_INET, "localhost", &server_addr.sin_addr) < 0)
     {
-        printf("Unable to start FS\n");
+        printf("inet_pton problem\n");
+        goto end;
+    }
+
+    // new socket
+    sfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sfd < 0)
+    {
+        printf("Socket don`t created\n");
         return 0;
+    }
+
+    // connect
+    if (connect(sfd, (struct sockaddr *)(&server_addr), sizeof(server_addr)) < 0)
+    {
+        printf("Cant connect to server\n");
+        goto end;
     }
 
     char *line = NULL;
     size_t line_len = 0;
+    OperationType oType;
     for(;;)
     {
         printf("\n>");
@@ -35,12 +75,29 @@ int main(int argc, char ** argv)
 
         if (strncmp(line, "ls", 2) == 0)
         {
-            char *dirname = NULL;
+            // parse and send
+            oType = OT_LS;
+            write(sfd, &oType, sizeof(OperationType));
+            int len = 0;
             if (res > 3)
             {
-                dirname = line + 3;
+                len = strlen(line + 3);
+                write(sfd, &len, sizeof(int));
+                write(sfd, line + 3, len * sizeof(char));
             }
-            int count = ls(fd, &data, dirname, 0, NULL);
+            else
+            {
+                write(sfd, &len, sizeof(int));
+            }
+
+            // receive and print
+            int count;
+            if (read(sfd, &count, sizeof(int)) < sizeof(int))
+            {
+                printf("Server problem\n");
+                continue;
+            }
+            
             if (-1 == count)
             {
                 printf("There is a file in directory path\n");
@@ -55,8 +112,16 @@ int main(int argc, char ** argv)
             {
                 continue;
             }
+
+            // if need to write something
             lsRetItem *ret = (lsRetItem*)malloc(count * sizeof(lsRetItem));
-            ls(fd, &data, dirname, 0, ret);
+            if (read(sfd, ret, count * sizeof(lsRetItem)) < count * sizeof(lsRetItem))
+            {
+                free(ret);
+                printf("Server problem\n");
+                continue;
+            }
+            
             for (int pos = 0; pos < count; ++pos)
             {
                 lsRetItem *curr = ret + pos;
@@ -75,8 +140,22 @@ int main(int argc, char ** argv)
 
         if (strncmp(line, "rm", 2) == 0)
         {
+            oType = OT_RM;
+            int len = strlen(line + 3);
+            // send
+            write(sfd, &oType, sizeof(OperationType));
+            write(sfd, &len, sizeof(int));
+            write(sfd, line + 3, len * sizeof(char));
+
+            // receive
             rmRet ret;
-            rm(fd, &data, line + 3, 0, &ret);
+            if (read(sfd, &ret, sizeof(rmRet)) < sizeof(rmRet))
+            {
+                printf("Server problem\n");
+                continue;
+            }
+
+            // print result
             if (ret.isFileDirProblem)
             {
                 printf("There is file in remove path, but have to be directory\n");
@@ -103,8 +182,23 @@ int main(int argc, char ** argv)
 
         if (strncmp(line, "mkdir", 5) == 0)
         {
+            oType = OT_MAKE_DIR;
+            int len = strlen(line + 6);
+
+            // send
+            write(sfd, &oType, sizeof(OperationType));
+            write(sfd, &len, sizeof(int));
+            write(sfd, line + 6, len * sizeof(char));
+
+            // receive
             mkItemRet ret;
-            make_dir(fd, &data, line + 6, 0, &ret);
+            if (read(sfd, &ret, sizeof(mkItemRet)) < sizeof(mkItemRet))
+            {
+                printf("Server problem\n");
+                continue;
+            }
+
+            // print result
             if (ret.isBadOperation)
             {
                 printf("Problem with operation\n");
@@ -126,8 +220,23 @@ int main(int argc, char ** argv)
 
         if (strncmp(line, "mkfile", 6) == 0)
         {
+            oType = OT_MAKE_FILE;
+            int len = strlen(line + 7);
+
+            // send
+            write(sfd, &oType, sizeof(OperationType));
+            write(sfd, &len, sizeof(int));
+            write(sfd, line + 7, len * sizeof(char));
+
+            // receive
             mkItemRet ret;
-            make_file(fd, &data, line + 7, 0, &ret);
+            if (read(sfd, &ret, sizeof(mkItemRet)) < sizeof(mkItemRet))
+            {
+                printf("Server problem\n");
+                continue;
+            }
+
+            // print result
             if (ret.isBadOperation)
             {
                 printf("Problem with operation\n");
@@ -149,12 +258,14 @@ int main(int argc, char ** argv)
 
         if (strncmp(line, "open_file", 9) == 0)
         {
+            oType = OT_OPEN_FILE;
+
+            // parse args
             int typePos = 10;
             while(line[typePos] != ' ' && line[typePos] != 0)
             {
                 ++typePos;
             }
-
             if (0 == line[typePos])
             {
                 printf("Invalid syntax for open_file\n");
@@ -162,7 +273,6 @@ int main(int argc, char ** argv)
             }
             line[typePos] = 0;
             ++typePos;
-
             OpenFileType type = OFT_READ;
             if (line[typePos] == 'r')
             {
@@ -175,9 +285,25 @@ int main(int argc, char ** argv)
             else
             {
                 printf("Invalid open file type\n");
+                continue;
             }
 
-            int ret = open_file(fd, &data, line + 10, type, 0);
+            // send
+            int len = strlen(line + 10);
+            write(sfd, &oType, sizeof(OperationType));
+            write(sfd, &len, sizeof(int));
+            write(sfd, line + 10, len * sizeof(char));
+            write(sfd, &type, sizeof(OpenFileType));
+
+            // receive
+            int ret = 0;
+            if (read(sfd, &ret, sizeof(int)) < sizeof(int))
+            {
+                printf("Server problem\n");
+                continue;
+            }
+            
+            // print result
             if (-3 == ret)
             {
                 printf("There is a file in path, which have to be directory\n");
@@ -202,12 +328,43 @@ int main(int argc, char ** argv)
 
         if (strncmp(line, "read_file", 9) == 0)
         {
+            oType = OT_READ_FILE;
+
+            // parse
             int pos;
             int from;
             int count;
             sscanf(line + 10, "%d %d %d", &pos, &from, &count);
-            char *buff = (char*)malloc(sizeof(char) * count);
-            int ret = read_file(fd, &data, pos, buff, from, count);
+
+            // send
+            write(sfd, &oType, sizeof(OperationType));
+            write(sfd, &pos, sizeof(int));
+            write(sfd, &from, sizeof(int));
+            write(sfd, &count, sizeof(int));
+
+            // receive
+            int ret = 0;
+            if (read(sfd, &ret, sizeof(int)) < sizeof(int))
+            {
+                printf("Server problem\n");
+                continue;
+            }
+            int size = 0;
+            if (read(sfd, &size, sizeof(int)) < sizeof(int))
+            {
+                printf("Server problem\n");
+                continue;
+            }
+            char *buff = (char*)malloc(sizeof(char) * (size + 1));
+            if (read(sfd, buff, size * sizeof(char)) < size * sizeof(char))
+            {
+                free(buff);
+                printf("Server problem\n");
+                continue;
+            }
+            buff[size] = 0;
+
+            // print result
             if (-2 == ret)
             {
                 printf("Incorrect FD\n");
@@ -226,9 +383,24 @@ int main(int argc, char ** argv)
 
         if (strncmp(line, "close_file", 10) == 0)
         {
+            oType = OT_CLOSE_FILE;
+
+            // parse
             int pos;
             sscanf(line + 11, "%d", &pos);
-            int ret = close_file(fd, &data, pos);
+
+            // send
+            write(sfd, &oType, sizeof(OperationType));
+            write(sfd, &pos, sizeof(int));
+
+            // receive
+            int ret = 0;
+            if (read(sfd, &ret, sizeof(int)) < sizeof(int))
+            {
+                printf("Server problem\n");
+                continue;
+            }
+
             if (0 == ret)
             {
                 printf("Incorrect FD\n");
@@ -246,6 +418,9 @@ int main(int argc, char ** argv)
 
         if (strncmp(line, "write_file", 10) == 0)
         {
+            oType = OT_WRITE_FILE;
+
+            // parse
             char *end;
             int pos = strtol(line + 11, &end, 10);
             int buff_start = 11;
@@ -254,7 +429,23 @@ int main(int argc, char ** argv)
                 ++buff_start;
             }
             ++buff_start;
-            int ret = write_file(fd, &data, pos , line + buff_start);
+
+            // send
+            write(sfd, &oType, sizeof(OperationType));
+            write(sfd, &pos, sizeof(int));
+            int len = strlen(line + buff_start);
+            write(sfd, &len, sizeof(int));
+            write(sfd, line + buff_start, len * sizeof(char));
+
+            // receive
+            int ret;
+            if (read(sfd, &ret, sizeof(int)) < sizeof(int))
+            {
+                printf("Server problem\n");
+                continue;
+            }
+
+            // print result
             if (-2 == ret)
             {
                 printf("Invalid FD: %d\n", pos);
@@ -267,17 +458,19 @@ int main(int argc, char ** argv)
             }
             if (0 == ret)
             {
-                printf("Complete\n");
+                printf("Complete %d bytes\n", len);
                 continue;
             }
             printf("Undefined behavior\n");
             continue;
         }
 
-
         printf("Invalid syntax\n");
     }
 
-    stop_fs(fd, &data);
-    return 0;
+end:
+    oType = OT_CLOSE_CONNECTION;
+    write(sfd, &oType, sizeof(OperationType));
+    printf("Finish\n");
+    close(sfd);
 }

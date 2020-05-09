@@ -72,20 +72,21 @@ int open_file(FILE *fd, FSMetaData *data, char * filename, OpenFileType type, in
                     return -3;
                 }
                 //printf("Find dir, go build ls\n");
+                int iNodeOld = curr->iNodeLoc;
                 if (OFT_WRITE == type)
                 {
-                    int iNodeOld = curr->iNodeLoc;
                     curr->iNodeLoc = NewINode(fd, data, iNode, IT_FILE, 0);
                     fseek(fd, sizeof(FSMetaData) + iNode * CHUNK_SIZE + sizeof(Info), SEEK_SET);
-                    fwrite(items, sizeof(Item), dirInfo.countData, fd);
-                    rm_solve_file(fd, data, iNodeOld);
-                    // TODO
-                    fseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode + sizeof(Info), SEEK_SET);
-                    fread(items, sizeof(Item), dirInfo.countData, fd);  
+                    fwrite(items, sizeof(Item), dirInfo.countData, fd); 
                 }
                 iNodeLoc = curr->iNodeLoc;
                 free(items);
-                return find_fd(fd, data, type, iNode, iNodeLoc);
+                int ret = find_fd(fd, data, type, iNode, iNodeLoc);
+                if (OFT_WRITE == type)
+                {
+                    rm_solve_file(fd, data, iNodeOld);
+                }
+                return ret;
             }
         }
     }

@@ -139,16 +139,14 @@ void rm_from_list(FILE *fd, FSMetaData *data, int iNode, int pos)
     fseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNodeLast, SEEK_SET);
     fread(&dirInfoLast, sizeof(Info), 1, fd);
     --dirInfoLast.countData;
+    fseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNodeLast, SEEK_SET);
+    fwrite(&dirInfoLast, sizeof(Info), 1, fd);
 
     // read last item
     Item* mem = (Item*) malloc(sizeof(Item));
     fseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNodeLast + sizeof(Info) + dirInfoLast.countData * sizeof(Item), SEEK_SET);
     fread(mem, sizeof(Item), 1, fd);
 
-    if (0 == dirInfoLast.countData)
-    {
-        DelINode(fd, data, iNodeLast);
-    }
 
     // write him into 
     fseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode + sizeof(Info) + pos * sizeof(Item), SEEK_SET);

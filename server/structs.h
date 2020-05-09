@@ -58,7 +58,7 @@ typedef struct FileLink
 } FileLink;
 
 #define CHUNK_SIZE 128
-//sizeof(Info) + 2 * sizeof(Item);
+// (sizeof(Info) + 2 * sizeof(Item));
 
 #define MAX_CHUNK_SPACE (CHUNK_SIZE - sizeof(Info))
 
@@ -109,12 +109,30 @@ int NewINode(FILE* fd, FSMetaData *data, int parent, ItemType type, int depth)
 void change(FILE* fd, FSMetaData* data, int iNode, int iNodeFrom, int iNodeTo)
 {
     //printf("Change in %d iNode from %d to %d\n", iNode, iNodeFrom, iNodeTo);
+
     Info info;
     fseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode, SEEK_SET);
     fread(&info, sizeof(Info), 1, fd);
 
+    for (int pos = 0; pos < MAX_FD; ++pos)
+    {
+        if (iNodeFrom == data->fd[pos].iNode)
+        {
+            data->fd[pos].iNode = iNodeTo;
+        }
+        if (iNodeFrom == data->fd[pos].iNodePar)
+        {
+            data->fd[pos].iNodePar = iNodeTo;
+        }
+    }
+
+    fseek(fd, 0, SEEK_SET);
+    fwrite(data, sizeof(FSMetaData), 1, fd);
+
     if (IT_DIRECTORY == info.type)
     {
+        //printf("%d is Directory\n", iNode);
+
         // read items
         Item* items = (Item*) malloc(sizeof(Item) * info.countData);
         fseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode + sizeof(Info), SEEK_SET);
@@ -137,20 +155,7 @@ void change(FILE* fd, FSMetaData* data, int iNode, int iNodeFrom, int iNodeTo)
         return;
     }
 
-    for (int pos = 0; pos < MAX_FD; ++pos)
-    {
-        if (iNodeFrom == data->fd[pos].iNode)
-        {
-            data->fd[pos].iNode = iNodeTo;
-        }
-        if (iNodeFrom == data->fd[pos].iNodePar)
-        {
-            data->fd[pos].iNodePar = iNodeTo;
-        }
-    }
-
-    fseek(fd, 0, SEEK_SET);
-    fwrite(data, sizeof(FSMetaData), 1, fd);
+    //printf("%d is File with %d depth\n", iNode, info.depth);
 
     if (0 == info.depth)
     {
@@ -180,6 +185,7 @@ void change(FILE* fd, FSMetaData* data, int iNode, int iNodeFrom, int iNodeTo)
 void DelINode(FILE *fd, FSMetaData *data, int iNode)
 {
     //printf("Delete %d iNode\n", iNode);
+
     --data->lastBlockNum;
     fseek(fd, 0, SEEK_SET);
     fwrite(data, sizeof(FSMetaData), 1, fd);

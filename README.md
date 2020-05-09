@@ -1,10 +1,11 @@
 # linux1
 
 # Сборка:
-build.sh - собирает проект
+build.sh - собирает проект (в соответствующей папке client / server)
 
 # Запуск:
-./minifs file
+./client - без аргументов
+./server file
 
 # Команды:
 ls - вывод корня

@@ -4,15 +4,15 @@
 #include "structs.h"
 #include "ret_values.h"
 
-void rm_solve_file(FILE *fd, FSMetaData *data, int iNode);
+void rm_solve_file(int fd, FSMetaData *data, int iNode);
 
-void rm_solve_dir(FILE *fd, FSMetaData *data, int iNode);
+void rm_solve_dir(int fd, FSMetaData *data, int iNode);
 
-int find_last_iNode(FILE *fd, FSMetaData *data, int iNode);
+int find_last_iNode(int fd, FSMetaData *data, int iNode);
 
-void rm_from_list(FILE *fd, FSMetaData *data, int iNode, int pos);
+void rm_from_list(int fd, FSMetaData *data, int iNode, int pos);
 
-void rm(FILE *fd, FSMetaData *data, char* name, int iNode, rmRet* ret)
+void rm(int fd, FSMetaData *data, char* name, int iNode, rmRet* ret)
 {
     ret->isFile = 0;
     ret->isFileDirProblem = 0;
@@ -26,8 +26,8 @@ void rm(FILE *fd, FSMetaData *data, char* name, int iNode, rmRet* ret)
 
     // read dir info of current iNode
     Info dirInfo;
-    fseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode, SEEK_SET);
-    fread(&dirInfo, sizeof(Info), 1, fd);
+    lseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode, SEEK_SET);
+    read(fd, &dirInfo, sizeof(Info));
 
     //printf("dirinfo: countData %d, next node %d\n", dirInfo.countData, dirInfo.iNodeNext);
 
@@ -35,8 +35,8 @@ void rm(FILE *fd, FSMetaData *data, char* name, int iNode, rmRet* ret)
 
     //printf("Start read items\n");
     Item* items = (Item*) malloc(sizeof(Item) * dirInfo.countData);
-    fseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode + sizeof(Info), SEEK_SET);
-    fread(items, sizeof(Item), dirInfo.countData, fd);
+    lseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode + sizeof(Info), SEEK_SET);
+    read(fd, items, sizeof(Item) * dirInfo.countData);
     //printf("Got Items\n");
 
     for (int pos = 0; pos < dirInfo.countData; ++pos)
@@ -94,12 +94,12 @@ void rm(FILE *fd, FSMetaData *data, char* name, int iNode, rmRet* ret)
     return;
 }
 
-int find_last_iNode(FILE *fd, FSMetaData *data, int iNode)
+int find_last_iNode(int fd, FSMetaData *data, int iNode)
 {
     // read dir info of current iNode
     Info dirInfo;
-    fseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode, SEEK_SET);
-    fread(&dirInfo, sizeof(Info), 1, fd);
+    lseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode, SEEK_SET);
+    read(fd, &dirInfo, sizeof(Info));
     
     if (dirInfo.iNodeNext == 0)
     {
@@ -109,57 +109,56 @@ int find_last_iNode(FILE *fd, FSMetaData *data, int iNode)
     return find_last_iNode(fd, data, dirInfo.iNodeNext);
 }
 
-void rm_from_list(FILE *fd, FSMetaData *data, int iNode, int pos)
+void rm_from_list(int fd, FSMetaData *data, int iNode, int pos)
 {
     // dirInfo iNode
     Info dirInfo;
-    fseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode, SEEK_SET);
-    fread(&dirInfo, sizeof(Info), 1, fd);
+    lseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode, SEEK_SET);
+    read(fd, &dirInfo, sizeof(Info));
 
     if (dirInfo.iNodeNext == 0)
     {
         --dirInfo.countData;
-        fseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode, SEEK_SET);
-        fwrite(&dirInfo, sizeof(Info), 1, fd);
+        lseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode, SEEK_SET);
+        write(fd, &dirInfo, sizeof(Info));
         if (pos == dirInfo.countData)
         {
             return;
         }
-        Item* mem = (Item*) malloc(sizeof(Item));
-        fseek(fd, sizeof(FSMetaData) + iNode * CHUNK_SIZE + sizeof(Info) + dirInfo.countData * sizeof(Item), SEEK_SET);
-        fread(mem, sizeof(Item), 1, fd);
-        fseek(fd, sizeof(FSMetaData) + iNode * CHUNK_SIZE + sizeof(Info) + pos * sizeof(Item), SEEK_SET);
-        fwrite(mem, sizeof(Item), 1, fd);
-        free(mem);
+        Item mem;
+        lseek(fd, sizeof(FSMetaData) + iNode * CHUNK_SIZE + sizeof(Info) + dirInfo.countData * sizeof(Item), SEEK_SET);
+        read(fd, &mem, sizeof(Item));
+        lseek(fd, sizeof(FSMetaData) + iNode * CHUNK_SIZE + sizeof(Info) + pos * sizeof(Item), SEEK_SET);
+        write(fd, &mem, sizeof(Item));
         return;
     }
     int iNodeLast = find_last_iNode(fd, data, dirInfo.iNodeNext);
     // change dirInfoLast
     Info dirInfoLast;
-    fseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNodeLast, SEEK_SET);
-    fread(&dirInfoLast, sizeof(Info), 1, fd);
+    lseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNodeLast, SEEK_SET);
+    read(fd, &dirInfoLast, sizeof(Info));
     --dirInfoLast.countData;
-    fseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNodeLast, SEEK_SET);
-    fwrite(&dirInfoLast, sizeof(Info), 1, fd);
+    lseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNodeLast, SEEK_SET);
+    write(fd, &dirInfoLast, sizeof(Info));
 
     // read last item
     Item* mem = (Item*) malloc(sizeof(Item));
-    fseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNodeLast + sizeof(Info) + dirInfoLast.countData * sizeof(Item), SEEK_SET);
-    fread(mem, sizeof(Item), 1, fd);
+    lseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNodeLast + sizeof(Info) + dirInfoLast.countData * sizeof(Item), SEEK_SET);
+    read(fd, mem, sizeof(Item));
 
 
     // write him into 
-    fseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode + sizeof(Info) + pos * sizeof(Item), SEEK_SET);
-    fwrite(mem, sizeof(Item), 1, fd);
+    lseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode + sizeof(Info) + pos * sizeof(Item), SEEK_SET);
+    write(fd, mem, sizeof(Item));
 
     free(mem);
 }
 
-void rm_solve_file(FILE *fd, FSMetaData *data, int iNode)
+void rm_solve_file(int fd, FSMetaData *data, int iNode)
 {
     Info fileInfo;
-    fseek(fd, sizeof(FSMetaData) + iNode * CHUNK_SIZE, SEEK_SET);
-    fread(&fileInfo, sizeof(Info), 1, fd);
+    lseek(fd, sizeof(FSMetaData) + iNode * CHUNK_SIZE, SEEK_SET);
+    read(fd, &fileInfo, sizeof(Info));
 
     if (0 == fileInfo.depth)
     {
@@ -168,8 +167,8 @@ void rm_solve_file(FILE *fd, FSMetaData *data, int iNode)
     }
 
     FileLink* links = (FileLink*)malloc(sizeof(FileLink) * fileInfo.countData);
-    fseek(fd, sizeof(FSMetaData) + iNode * CHUNK_SIZE + sizeof(Info), SEEK_SET);
-    fread(links, sizeof(FileLink), fileInfo.countData, fd);
+    lseek(fd, sizeof(FSMetaData) + iNode * CHUNK_SIZE + sizeof(Info), SEEK_SET);
+    read(fd, links, sizeof(FileLink) * fileInfo.countData);
 
     for (int pos = 0; pos < fileInfo.countData; ++pos)
     {
@@ -182,12 +181,12 @@ void rm_solve_file(FILE *fd, FSMetaData *data, int iNode)
     return;
 }
 
-void rm_solve_dir(FILE *fd, FSMetaData *data, int iNode)
+void rm_solve_dir(int fd, FSMetaData *data, int iNode)
 {
     // read dir info of current iNode
     Info dirInfo;
-    fseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode, SEEK_SET);
-    fread(&dirInfo, sizeof(Info), 1, fd);
+    lseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode, SEEK_SET);
+    read(fd, &dirInfo, sizeof(Info));
 
     //printf("dirinfo: countData %d, next node %d\n", dirInfo.countData, dirInfo.iNodeNext);
 
@@ -195,8 +194,8 @@ void rm_solve_dir(FILE *fd, FSMetaData *data, int iNode)
 
     //printf("Start read items\n");
     Item* items = (Item*) malloc(sizeof(Item) * dirInfo.countData);
-    fseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode + sizeof(Info), SEEK_SET);
-    fread(items, sizeof(Item), dirInfo.countData, fd);
+    lseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode + sizeof(Info), SEEK_SET);
+    read(fd, items, sizeof(Item) * dirInfo.countData);
     //printf("Got Items\n");
     
     // try fo find dir

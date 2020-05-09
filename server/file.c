@@ -4,7 +4,7 @@
 #include "structs.h"
 #include "dir.c"
 
-void make_file(FILE* fd, FSMetaData* data, char* filename, int iNode, mkItemRet *ret)
+void make_file(int fd, FSMetaData* data, char* filename, int iNode, mkItemRet *ret)
 {
     ret->isBadOperation = 0;
     ret->isExistDir = 0;
@@ -33,8 +33,8 @@ void make_file(FILE* fd, FSMetaData* data, char* filename, int iNode, mkItemRet 
 
     // read dir info of current iNode
     Info dirInfo;
-    fseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode, SEEK_SET);
-    fread(&dirInfo, sizeof(Info), 1, fd);
+    lseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode, SEEK_SET);
+    read(fd, &dirInfo, sizeof(Info));
 
     //printf("dirinfo: countData %d, next node %d\n", dirInfo.countData, dirInfo.iNodeNext);
 
@@ -42,8 +42,8 @@ void make_file(FILE* fd, FSMetaData* data, char* filename, int iNode, mkItemRet 
 
     //printf("Start read items\n");
     Item* items = (Item*) malloc(sizeof(Item) * dirInfo.countData);
-    fseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode + sizeof(Info), SEEK_SET);
-    fread(items, sizeof(Item), dirInfo.countData, fd);
+    lseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode + sizeof(Info), SEEK_SET);
+    read(fd, items, sizeof(Item) * dirInfo.countData);
     //printf("Got Items\n");
     
     // try fo find dir
@@ -91,8 +91,8 @@ void make_file(FILE* fd, FSMetaData* data, char* filename, int iNode, mkItemRet 
     {
         //printf("new next iNode\n");
         dirInfo.iNodeNext = NewINode(fd, data, iNode, IT_DIRECTORY, 0);
-        fseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode, SEEK_SET);
-        fwrite(&dirInfo, sizeof(Info), 1, fd);
+        lseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode, SEEK_SET);
+        write(fd, &dirInfo, sizeof(Info));
         make_file(fd, data, filename, dirInfo.iNodeNext, ret);
         return;
     }
@@ -106,13 +106,13 @@ void make_file(FILE* fd, FSMetaData* data, char* filename, int iNode, mkItemRet 
     new_item.iNodeLoc = NewINode(fd, data, iNode, IT_FILE, 0);
     strncpy(new_item.name, filename, len);
     new_item.name[len] = 0;
-    fseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode + sizeof(Info) + dirInfo.countData * sizeof(Item), SEEK_SET);
-    fwrite(&new_item, sizeof(Item), 1, fd);
+    lseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode + sizeof(Info) + dirInfo.countData * sizeof(Item), SEEK_SET);
+    write(fd, &new_item, sizeof(Item));
 
     // update dir info
     ++dirInfo.countData;
-    fseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode, SEEK_SET);
-    fwrite(&dirInfo, sizeof(Info), 1, fd);
+    lseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode, SEEK_SET);
+    write(fd, &dirInfo, sizeof(Info));
 }
 
 #endif

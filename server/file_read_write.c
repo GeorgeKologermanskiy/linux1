@@ -5,9 +5,9 @@
 #include "ret_values.h"
 #include <math.h>
 
-int write_file_ret_iNode(FILE *fd, FSMetaData *data, int iNode, char *buff, int len, int *written, int canIncreaseDepth);
+int write_file_ret_iNode(int fd, FSMetaData *data, int iNode, char *buff, int len, int *written, int canIncreaseDepth);
 
-int write_file(FILE *fd, FSMetaData *data, int file_fd, char *buff, int len)
+int write_file(int fd, FSMetaData *data, int file_fd, char *buff, int len)
 {
     // incorrect file_fd
     if (file_fd < 0 || MAX_FD <= file_fd)
@@ -37,7 +37,7 @@ int write_file(FILE *fd, FSMetaData *data, int file_fd, char *buff, int len)
     return 0;
 }
 
-int write_file_ret_iNode(FILE *fd, FSMetaData *data, int iNode, char *buff, int len, int *written, int canIncreaseDepth)
+int write_file_ret_iNode(int fd, FSMetaData *data, int iNode, char *buff, int len, int *written, int canIncreaseDepth)
 {
     //printf("\nTry to write in iNode %d %s with len %d canInc - %d\n", iNode, buff, len, canIncreaseDepth);
     if (len == 0)
@@ -48,8 +48,8 @@ int write_file_ret_iNode(FILE *fd, FSMetaData *data, int iNode, char *buff, int 
 
     // read file info
     Info fileInfo;
-    fseek(fd, sizeof(FSMetaData) + iNode * CHUNK_SIZE, SEEK_SET);
-    fread(&fileInfo, sizeof(Info), 1, fd);
+    lseek(fd, sizeof(FSMetaData) + iNode * CHUNK_SIZE, SEEK_SET);
+    read(fd, &fileInfo, sizeof(Info));
 
     //printf("fileInfo: countData - %d, depth - %d, free space - %d\n", fileInfo.countData, fileInfo.depth, fileInfo.freeSpace);
 
@@ -67,22 +67,22 @@ int write_file_ret_iNode(FILE *fd, FSMetaData *data, int iNode, char *buff, int 
             int w = (fileInfo.freeSpace < len ? fileInfo.freeSpace : len);
             //printf("0 depth, try to write %d\n", w);
             *written += w;
-            fseek(fd, sizeof(FSMetaData) + iNode * CHUNK_SIZE + sizeof(Info) + fileInfo.countData, SEEK_SET);
-            fwrite(buff, sizeof(char), w, fd);
+            lseek(fd, sizeof(FSMetaData) + iNode * CHUNK_SIZE + sizeof(Info) + fileInfo.countData, SEEK_SET);
+            write(fd, buff, sizeof(char) * w);
             
             //printf("Write in iNode %d %d bytes\n", iNode, w);
 
             fileInfo.freeSpace -= w;
             fileInfo.countData += w;
-            fseek(fd, sizeof(FSMetaData) + iNode * CHUNK_SIZE, SEEK_SET);
-            fwrite(&fileInfo, sizeof(Info), 1, fd);
+            lseek(fd, sizeof(FSMetaData) + iNode * CHUNK_SIZE, SEEK_SET);
+            write(fd, &fileInfo, sizeof(Info));
             return iNode;
         }
 
         // read items
         FileLink* items = (FileLink*)malloc(sizeof(FileLink) * MAX_LINK_COUNT);
-        fseek(fd, sizeof(FSMetaData) + iNode * CHUNK_SIZE + sizeof(Info), SEEK_SET);
-        fread(items, sizeof(FileLink), fileInfo.countData, fd);
+        lseek(fd, sizeof(FSMetaData) + iNode * CHUNK_SIZE + sizeof(Info), SEEK_SET);
+        read(fd, items, sizeof(FileLink) * fileInfo.countData);
 
         for (int pos = 0; pos < MAX_LINK_COUNT; ++pos)
         {
@@ -103,12 +103,12 @@ int write_file_ret_iNode(FILE *fd, FSMetaData *data, int iNode, char *buff, int 
             fileInfo.freeSpace -= w;
         }
         // update file info
-        fseek(fd, sizeof(FSMetaData) + iNode * CHUNK_SIZE, SEEK_SET);
-        fwrite(&fileInfo, sizeof(Info), 1, fd);
+        lseek(fd, sizeof(FSMetaData) + iNode * CHUNK_SIZE, SEEK_SET);
+        write(fd, &fileInfo, sizeof(Info));
 
         // update items
-        fseek(fd, sizeof(FSMetaData) + iNode * CHUNK_SIZE + sizeof(Info), SEEK_SET);
-        fwrite(items, sizeof(FileLink), fileInfo.countData, fd);
+        lseek(fd, sizeof(FSMetaData) + iNode * CHUNK_SIZE + sizeof(Info), SEEK_SET);
+        write(fd, items, sizeof(FileLink) * fileInfo.countData);
         free(items);
         return iNode;
     }
@@ -119,8 +119,8 @@ int write_file_ret_iNode(FILE *fd, FSMetaData *data, int iNode, char *buff, int 
     buff += w;
     len -= w;
     // update file info
-    fseek(fd, sizeof(FSMetaData) + iNode * CHUNK_SIZE, SEEK_SET);
-    fread(&fileInfo, sizeof(Info), 1, fd);
+    lseek(fd, sizeof(FSMetaData) + iNode * CHUNK_SIZE, SEEK_SET);
+    read(fd, &fileInfo, sizeof(Info));
     
     int iNodeRet = NewINode(fd, data, fileInfo.iNodePrev, IT_FILE, fileInfo.depth + 1);
 
@@ -129,30 +129,30 @@ int write_file_ret_iNode(FILE *fd, FSMetaData *data, int iNode, char *buff, int 
     // add link iNodeRet to iNode
     FileLink link;
     link.iNode = iNode;
-    fseek(fd, sizeof(FSMetaData) + iNodeRet * CHUNK_SIZE + sizeof(Info), SEEK_SET);
-    fwrite(&link, sizeof(FileLink), 1, fd);
+    lseek(fd, sizeof(FSMetaData) + iNodeRet * CHUNK_SIZE + sizeof(Info), SEEK_SET);
+    write(fd, &link, sizeof(FileLink));
 
     // increase count data in iNodeRet
     // and decrease freeSpace
     Info fileInfoRet;
-    fseek(fd, sizeof(FSMetaData) + iNodeRet * CHUNK_SIZE, SEEK_SET);
-    fread(&fileInfoRet, sizeof(Info), 1, fd);
+    lseek(fd, sizeof(FSMetaData) + iNodeRet * CHUNK_SIZE, SEEK_SET);
+    read(fd, &fileInfoRet, sizeof(Info));
     fileInfoRet.countData = 1;
     fileInfoRet.freeSpace -= MAX_CHUNK_SPACE * power(MAX_LINK_COUNT, fileInfo.depth);
-    fseek(fd, sizeof(FSMetaData) + iNodeRet * CHUNK_SIZE, SEEK_SET);
-    fwrite(&fileInfoRet, sizeof(Info), 1, fd);
+    lseek(fd, sizeof(FSMetaData) + iNodeRet * CHUNK_SIZE, SEEK_SET);
+    write(fd, &fileInfoRet, sizeof(Info));
 
     // update parent link in file info
     fileInfo.iNodePrev = iNodeRet;
-    fseek(fd, sizeof(FSMetaData) + iNode * CHUNK_SIZE, SEEK_SET);
-    fwrite(&fileInfo, sizeof(Info), 1, fd);
+    lseek(fd, sizeof(FSMetaData) + iNode * CHUNK_SIZE, SEEK_SET);
+    write(fd, &fileInfo, sizeof(Info));
 
     return write_file_ret_iNode(fd, data, iNodeRet, buff, len, written, 1);
 }
 
-void read_file_dfs(FILE *fd, FSMetaData *data, int iNode, char **buff, int *from, int *len);
+void read_file_dfs(int fd, FSMetaData *data, int iNode, char **buff, int *from, int *len);
 
-int read_file(FILE *fd, FSMetaData *data, int file_fd, char *buff, int from, int len)
+int read_file(int fd, FSMetaData *data, int file_fd, char *buff, int from, int len)
 {
     // incorrect file_fd
     if (file_fd < 0 || MAX_FD <= file_fd)
@@ -175,7 +175,7 @@ int read_file(FILE *fd, FSMetaData *data, int file_fd, char *buff, int from, int
     return 0;
 }
 
-void read_file_dfs(FILE *fd, FSMetaData *data, int iNode, char **buff, int *from, int *len)
+void read_file_dfs(int fd, FSMetaData *data, int iNode, char **buff, int *from, int *len)
 {
     //printf("\nRead from iNode %d\n", iNode);
     if (*len == 0)
@@ -184,8 +184,8 @@ void read_file_dfs(FILE *fd, FSMetaData *data, int iNode, char **buff, int *from
     }
     // read file info
     Info fileInfo;
-    fseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode, SEEK_SET);
-    fread(&fileInfo, sizeof(Info), 1, fd);
+    lseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode, SEEK_SET);
+    read(fd, &fileInfo, sizeof(Info));
 
     //printf("fileInfo: countData - %d, depth - %d, free space - %d\n", fileInfo.countData, fileInfo.depth, fileInfo.freeSpace);
 
@@ -201,8 +201,8 @@ void read_file_dfs(FILE *fd, FSMetaData *data, int iNode, char **buff, int *from
     {
         int size = (*len < (int)fileInfo.countData - *from ? *len : (int)fileInfo.countData - *from);
         //printf("Depth 0, go read %d\n", size);
-        fseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode + sizeof(Info) + *from, SEEK_SET);
-        fread(*buff, sizeof(char), size, fd);
+        lseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode + sizeof(Info) + *from, SEEK_SET);
+        read(fd, *buff, sizeof(char) * size);
         *from = 0;
         *buff += size;
         *len -= size;
@@ -212,8 +212,8 @@ void read_file_dfs(FILE *fd, FSMetaData *data, int iNode, char **buff, int *from
     //printf("Depth more than 0, go recursive\n");
 
     FileLink *links = (FileLink*)malloc(sizeof(FileLink) * fileInfo.countData);
-    fseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode + sizeof(Info), SEEK_SET);
-    fread(links, sizeof(FileLink), fileInfo.countData, fd);
+    lseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode + sizeof(Info), SEEK_SET);
+    read(fd, links, sizeof(FileLink) * fileInfo.countData);
     for (int pos = 0; pos < fileInfo.countData; ++pos)
     {
         read_file_dfs(fd, data, links[pos].iNode, buff, from, len);

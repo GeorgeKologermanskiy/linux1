@@ -2,6 +2,7 @@
 #define CONFIG_C
 
 #define PORT_CON 6823
+#define driverFilename "/dev/miniFSdriver"
 
 typedef enum OperationType
 {

@@ -82,10 +82,10 @@ int power(int a, int n)
     return b * b;
 }
 
-int NewINode(FILE* fd, FSMetaData *data, int parent, ItemType type, int depth)
+int NewINode(int fd, FSMetaData *data, int parent, ItemType type, int depth)
 {
     //printf("Create iNode %d, type - %d\n", data->lastBlockNum, type);
-    fseek(fd, sizeof(FSMetaData) + data->lastBlockNum * CHUNK_SIZE, SEEK_SET);
+    lseek(fd, sizeof(FSMetaData) + data->lastBlockNum * CHUNK_SIZE, SEEK_SET);
     Info info;
     info.iNodeCurr = -1;
     info.iNodePrev = parent;
@@ -94,25 +94,25 @@ int NewINode(FILE* fd, FSMetaData *data, int parent, ItemType type, int depth)
     info.type = type;
     info.depth = depth;
     info.freeSpace = MAX_CHUNK_SPACE * power(MAX_LINK_COUNT, depth);
-    fwrite(&info, sizeof(Info), 1, fd);
+    write(fd, &info, sizeof(Info));
 
     // alloc
     ++data->lastBlockNum;
-    fseek(fd, sizeof(FSMetaData) + data->lastBlockNum * CHUNK_SIZE, SEEK_SET);
-    fwrite("end", 1, 3, fd);
+    lseek(fd, sizeof(FSMetaData) + data->lastBlockNum * CHUNK_SIZE, SEEK_SET);
+    write(fd, "end", sizeof(char) * 3);
 
-    fseek(fd, 0, SEEK_SET);
-    fwrite(data, sizeof(FSMetaData), 1, fd);
+    lseek(fd, 0, SEEK_SET);
+    write(fd, data, sizeof(FSMetaData));
     return data->lastBlockNum - 1;
 }
 
-void change(FILE* fd, FSMetaData* data, int iNode, int iNodeFrom, int iNodeTo)
+void change(int fd, FSMetaData* data, int iNode, int iNodeFrom, int iNodeTo)
 {
     //printf("Change in %d iNode from %d to %d\n", iNode, iNodeFrom, iNodeTo);
 
     Info info;
-    fseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode, SEEK_SET);
-    fread(&info, sizeof(Info), 1, fd);
+    lseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode, SEEK_SET);
+    read(fd, &info, sizeof(Info));
 
     for (int pos = 0; pos < MAX_FD; ++pos)
     {
@@ -126,8 +126,8 @@ void change(FILE* fd, FSMetaData* data, int iNode, int iNodeFrom, int iNodeTo)
         }
     }
 
-    fseek(fd, 0, SEEK_SET);
-    fwrite(data, sizeof(FSMetaData), 1, fd);
+    lseek(fd, 0, SEEK_SET);
+    write(fd, data, sizeof(FSMetaData));
 
     if (IT_DIRECTORY == info.type)
     {
@@ -135,8 +135,8 @@ void change(FILE* fd, FSMetaData* data, int iNode, int iNodeFrom, int iNodeTo)
 
         // read items
         Item* items = (Item*) malloc(sizeof(Item) * info.countData);
-        fseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode + sizeof(Info), SEEK_SET);
-        fread(items, sizeof(Item), info.countData, fd);
+        lseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode + sizeof(Info), SEEK_SET);
+        read(fd, items, sizeof(Item) * info.countData);
 
         // change iNodes
         for (int pos = 0; pos < info.countData; ++pos)
@@ -148,8 +148,8 @@ void change(FILE* fd, FSMetaData* data, int iNode, int iNodeFrom, int iNodeTo)
         }
 
         // write items
-        fseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode + sizeof(Info), SEEK_SET);
-        fwrite(items, sizeof(Item), info.countData, fd);
+        lseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode + sizeof(Info), SEEK_SET);
+        write(fd, items, sizeof(Item) * info.countData);
 
         free(items);
         return;
@@ -164,8 +164,8 @@ void change(FILE* fd, FSMetaData* data, int iNode, int iNodeFrom, int iNodeTo)
 
     // read links
     FileLink *links = (FileLink*)malloc(sizeof(FileLink) * info.countData);
-    fseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode + sizeof(Info), SEEK_SET);
-    fread(links, sizeof(FileLink), info.countData, fd);
+    lseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode + sizeof(Info), SEEK_SET);
+    read(fd, links, sizeof(FileLink) * info.countData);
 
     // change links
     for (int pos = 0; pos < info.countData; ++pos)
@@ -176,19 +176,19 @@ void change(FILE* fd, FSMetaData* data, int iNode, int iNodeFrom, int iNodeTo)
         }
     }
 
-    fseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode + sizeof(Info), SEEK_SET);
-    fwrite(links, sizeof(FileLink), info.countData, fd);
+    lseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode + sizeof(Info), SEEK_SET);
+    write(fd, links, sizeof(FileLink) * info.countData);
 
     free(links);
 }
 
-void DelINode(FILE *fd, FSMetaData *data, int iNode)
+void DelINode(int fd, FSMetaData *data, int iNode)
 {
     //printf("Delete %d iNode\n", iNode);
 
     --data->lastBlockNum;
-    fseek(fd, 0, SEEK_SET);
-    fwrite(data, sizeof(FSMetaData), 1, fd);
+    lseek(fd, 0, SEEK_SET);
+    write(fd, data, sizeof(FSMetaData));
 
     if (data->lastBlockNum == iNode)
     {
@@ -196,20 +196,20 @@ void DelINode(FILE *fd, FSMetaData *data, int iNode)
     }
     // get last block
     char *mem = (char*)malloc(sizeof(char) * CHUNK_SIZE);
-    fseek(fd, sizeof(FSMetaData) + data->lastBlockNum * CHUNK_SIZE, SEEK_SET);
-    fread(mem, CHUNK_SIZE, 1, fd);
+    lseek(fd, sizeof(FSMetaData) + data->lastBlockNum * CHUNK_SIZE, SEEK_SET);
+    read(fd, mem, CHUNK_SIZE * sizeof(char));
 
     // write him to iNode
-    fseek(fd, sizeof(FSMetaData) + iNode * CHUNK_SIZE, SEEK_SET);
-    fwrite(mem, CHUNK_SIZE, 1, fd);
+    lseek(fd, sizeof(FSMetaData) + iNode * CHUNK_SIZE, SEEK_SET);
+    write(fd, mem, CHUNK_SIZE * sizeof(char));
 
     // free memory
     free(mem);
 
     // change 
     Info dirInfo;
-    fseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode, SEEK_SET);
-    fread(&dirInfo, sizeof(Info), 1, fd);
+    lseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode, SEEK_SET);
+    read(fd, &dirInfo, sizeof(Info));
     
     change(fd, data, dirInfo.iNodePrev, data->lastBlockNum, iNode);
 }

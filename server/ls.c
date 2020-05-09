@@ -4,9 +4,9 @@
 #include "structs.h"
 #include "ret_values.h"
 
-int ls_solve(FILE *fd, FSMetaData* data, int iNode, lsRetItem *ret);
+int ls_solve(int fd, FSMetaData* data, int iNode, lsRetItem *ret);
 
-int ls(FILE *fd, FSMetaData* data, char *dirname, int iNode, lsRetItem *ret)
+int ls(int fd, FSMetaData* data, char *dirname, int iNode, lsRetItem *ret)
 {
     if (NULL == dirname)
     {
@@ -21,8 +21,8 @@ int ls(FILE *fd, FSMetaData* data, char *dirname, int iNode, lsRetItem *ret)
 
     // read dir info of current iNode
     Info dirInfo;
-    fseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode, SEEK_SET);
-    fread(&dirInfo, sizeof(Info), 1, fd);
+    lseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode, SEEK_SET);
+    read(fd, &dirInfo, sizeof(Info));
 
     //printf("dirinfo: countData %d, next node %d\n", dirInfo.countData, dirInfo.iNodeNext);
 
@@ -30,8 +30,8 @@ int ls(FILE *fd, FSMetaData* data, char *dirname, int iNode, lsRetItem *ret)
 
     //printf("Start read items\n");
     Item* items = (Item*) malloc(sizeof(Item) * dirInfo.countData);
-    fseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode + sizeof(Info), SEEK_SET);
-    fread(items, sizeof(Item), dirInfo.countData, fd);
+    lseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode + sizeof(Info), SEEK_SET);
+    read(fd, items, sizeof(Item) * dirInfo.countData);
     //printf("Got Items\n");
 
     for (int pos = 0; pos < dirInfo.countData; ++pos)
@@ -76,12 +76,12 @@ int ls(FILE *fd, FSMetaData* data, char *dirname, int iNode, lsRetItem *ret)
     return -2;
 }
 
-int ls_solve(FILE *fd, FSMetaData* data, int iNode, lsRetItem *ret)
+int ls_solve(int fd, FSMetaData* data, int iNode, lsRetItem *ret)
 {
     // read dir info of current iNode
     Info dirInfo;
-    fseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode, SEEK_SET);
-    fread(&dirInfo, sizeof(Info), 1, fd);
+    lseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode, SEEK_SET);
+    read(fd, &dirInfo, sizeof(Info));
 
     //printf("dirinfo: countData %d, next node %d\n", dirInfo.countData, dirInfo.iNodeNext);
 
@@ -89,8 +89,8 @@ int ls_solve(FILE *fd, FSMetaData* data, int iNode, lsRetItem *ret)
 
     //printf("Start read items\n");
     Item* items = (Item*) malloc(sizeof(Item) * dirInfo.countData);
-    fseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode + sizeof(Info), SEEK_SET);
-    fread(items, sizeof(Item), dirInfo.countData, fd);
+    lseek(fd, sizeof(FSMetaData) + CHUNK_SIZE * iNode + sizeof(Info), SEEK_SET);
+    read(fd, items, sizeof(Item) * dirInfo.countData);
     //printf("Got Items\n");
     
     int result = dirInfo.countData;

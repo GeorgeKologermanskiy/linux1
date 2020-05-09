@@ -21,7 +21,7 @@
 #include "file_read_write.c"
 void Daemon();
 
-int main(int argc, char **argv)
+int main()
 {
     pid_t pid = fork();
     if (-1 == pid)
@@ -39,14 +39,14 @@ int main(int argc, char **argv)
     fclose(stdin);
     fclose(stdout);
     fclose(stderr);
-    Daemon(argc, argv);
+    Daemon();
     return 0;
 }
 
 int sfd;
 FILE *logfile;
 FSMetaData data;
-FILE* fd;
+int fd;
 
 void handle_sigint()
 {
@@ -76,7 +76,7 @@ char * read_buff(int client_fd, int *len)
     return buff;
 }
 
-void Daemon(int argc, char **argv)
+void Daemon()
 {
     struct sigaction action_int;
     memset(&action_int, 0, sizeof(action_int));
@@ -90,8 +90,8 @@ void Daemon(int argc, char **argv)
         return;
     }
 
-    fd = start_fs(argc, argv, &data);
-    if (NULL == fd)
+    fd = start_fs(&data);
+    if (-1 == fd)
     {
         fprintf(logfile, "Unable to start FS\n");
         return;
